@@ -36,7 +36,7 @@ Public Class frmMain
     'Stops timer when true
     Dim endtimer As Boolean = False
 
-
+    Dim failcount As Integer
     Private Sub frmMain_Load(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles MyBase.Load
 
         'lists all serial ports 
@@ -57,6 +57,11 @@ Public Class frmMain
 
         btnDisconnect.Enabled = False
         btn_ResetPort.Enabled = False
+        txtCallNo.Enabled = False
+        txtSMS.Enabled = False
+        btn_ResetPort.Enabled = True
+        txtRX.Enabled = False
+        txtRX2.Enabled = False
         portCount()
 
     End Sub
@@ -69,6 +74,8 @@ Public Class frmMain
         Clicks = DirectCast(sender, Button).Name
 
         If Clicks = "btnConnect" Then
+
+            failcount = 0
 
             SerialPort1.Close()
             SerialPort1.PortName = cmbPort.Text       'Set COM port
@@ -87,8 +94,9 @@ Public Class frmMain
                 btnDisconnect.Enabled = True
 
             Catch
-                lblMin.Text = "Port in use"
-                'MessageBox.Show("PORT IN USE")
+                'lblMin.Text = "Port in use"
+                lblSimStatus.ForeColor = Color.Red
+                lblSimStatus.Text = "PORT IN USE"
 
                 'update_PortCount()
                 btnConnect.Enabled = True
@@ -113,21 +121,36 @@ Public Class frmMain
         Clicks = DirectCast(sender, Button).Name
 
         If Clicks = "btnDisconnect" Then
+            endtimer = True
 
+            txtCallNo.Text = ""
+            txtCallNo.Text = ""
+            lblMin.Text = ""
+            lblColon.Text = ""
+            lblTenSecs.Text = ""
+            lblSeconds.Text = ""
+            failcount = 0
             istrue = False
 
             lbl_portcount.Text = "Ports in use: " & portCount()
             SerialPort1.Close()                         'Close Serial Port
 
+
             lblStatus.ForeColor = Color.Red
             lblStatus.Text = "Disconnected"
             lblSimStatus.Text = ""
 
-            txtRX.Clear()
 
+            If msgid <> "" Then
+                UpdateToPending()
+
+            End If
+            txtRX.Clear()
 
             btnConnect.Enabled = True
             btnDisconnect.Enabled = False
+            Close.Enabled = True
+
             SimReset()
 
             msgid = ""
@@ -237,7 +260,6 @@ Public Class frmMain
                     FindSim()
                     Try
                         Do
-
                             SelectChecking()
                             'MessageBox.Show(simNo)
 
@@ -245,6 +267,7 @@ Public Class frmMain
                                 SimInUse()
                                 lblSimStatus.ForeColor = Color.Green
                                 lblSimStatus.Text = SimName() & " IN USE"
+                                cmbPort.Enabled = False
                                 'port_Count = portCount() + 1
                                 'port_Count = portCount() + 1
                                 'update_PortCount()
@@ -257,6 +280,8 @@ Public Class frmMain
                             End If
 
                             If NotMatchVSTotal() = True Then
+                                btnDisconnect.Enabled = True
+                                btnDisconnect.PerformClick()
                                 lblSimStatus.ForeColor = Color.Red
                                 lblSimStatus.Text = "SIM NOT RECOGNIZED"
                                 Exit Do
@@ -277,12 +302,10 @@ Public Class frmMain
                     lblSimStatus.Text = "NO SIM CARD"
                     btnDisconnect.Enabled = False
                     btnConnect.Enabled = True
-
                 End If
 
             End If
             SendProcess()
-
         Catch
 
             'update_PortCount()
@@ -597,6 +620,8 @@ Public Class frmMain
                     portCount()
                     lbl_portcount.Text = "Ports in use: " & port_Count
                     CheckQueue()
+                    FailMaximumReached()
+
                     'MessageBox.Show("Inside the pending do loop")
                     'Check if there are any pending and processing - Boolean
                     GetID()
@@ -632,7 +657,7 @@ Public Class frmMain
                         lblStatus.Text = "Sending..."
                         btnConnect.Enabled = False
                         btnDisconnect.Enabled = False
-                        Close.Enabled = False
+                        Close.Enabled = True
                         Reset_sim.Enabled = False
 
                         'exit when message is too long
@@ -789,15 +814,22 @@ Public Class frmMain
                                 Exit Do
                             End If
                             CheckQueue()
+                            FailMaximumReached()
                             portCount()
                             lbl_portcount.Text = "Ports in use: " & portCount()
 
                         Loop Until txtRX.Text.Contains("ERROR")
                         CheckQueue()
+                        FailMaximumReached()
+
                     Loop Until ProcessCount() = 0
                     CheckQueue()
+                    FailMaximumReached()
+
                 Loop Until PendingCount() = 0
                 CheckQueue()
+                FailMaximumReached()
+
             Else
                 UpdateToPending()
             End If
@@ -809,12 +841,16 @@ Public Class frmMain
     'Checks if there are any pending and processing status
     Private Function CheckQueue()
         istrue = False
+        txtSMS.Text = ""
+        txtCallNo.Text = ""
         lblMin.Text = ""
         lblColon.Text = ""
         lblTenSecs.Text = ""
         lblSeconds.Text = ""
 
         If PendingCount() = 0 And ProcessCount() = 0 Then
+            cmbPort.Enabled = True
+            Reset_sim.Enabled = True
             lblStatus.ForeColor = Color.Green
             lblStatus.Text = "Queue Finished"
             istrue = True
@@ -829,22 +865,22 @@ Public Class frmMain
 
             lblSeconds.Text = 0
             mins_count()
-
-            lblSimStatus.Text = ""
             endtimer = True
+            lblSimStatus.Text = ""
 
-            If SerialPort1.IsOpen Then
+
+            If lblMin.Text = 0 And lblTenSecs.Text = 0 And lblSeconds.Text = 0 Then
+                btnDisconnect.Enabled = True
                 btnDisconnect.PerformClick()
                 SimReset()
                 SerialPort1.Close()
 
                 msgid = ""
-
+                btnConnect.Enabled = True
                 btnConnect.PerformClick()
             Else
 
             End If
-
 
             lblMin.Text = ""
             lblColon.Text = ""
@@ -855,6 +891,51 @@ Public Class frmMain
 
         Return istrue
 
+    End Function
+
+    Private Function FailMaximumReached()
+
+        If failcount > 1 Then
+            cmbPort.Enabled = True
+            Reset_sim.Enabled = True
+            lblStatus.ForeColor = Color.Red
+
+            lblStatus.Text = "2 Consecutive Fails. Check Load Balance"
+            'Will rerun code after 5 mins
+            ' Delay(300)
+
+            lblMin.Text = 5
+            lblColon.Text = ":"
+
+            lblTenSecs.Text = 0
+
+            lblSeconds.Text = 0
+
+            btnDisconnect.Enabled = True
+
+            mins_count()
+
+            lblSimStatus.Text = ""
+            endtimer = True
+
+            If lblMin.Text = 0 And lblTenSecs.Text = 0 And lblSeconds.Text = 0 Then
+
+                btnDisconnect.PerformClick()
+                SimReset()
+                SerialPort1.Close()
+
+                msgid = ""
+                btnConnect.Enabled = True
+                btnConnect.PerformClick()
+
+            End If
+            txtSMS.Text = ""
+            txtCallNo.Text = ""
+            lblMin.Text = ""
+            lblColon.Text = ""
+            lblTenSecs.Text = ""
+            lblSeconds.Text = ""
+        End If
     End Function
 
     Private Sub ReceivedText(ByVal [text] As String)
@@ -1141,16 +1222,19 @@ Public Class frmMain
         myCommand.CommandText = sqlquery
         myCommand.ExecuteNonQuery()
 
-
         lblStatus.ForeColor = Color.Red
-        lblStatus.Text = "Message Not Sent"
+        'lblStatus.Text = "Message Not Sent"
+        lblStatus.Text = ""
+
         GetCon.Close()
 
         'invalidate msgid to avoid being used
         msgid = ""
 
-        btnDisconnect.PerformClick()
-        'btnConnect.PerformClick()
+        failcount = failcount + 1
+        'btnDisconnect.PerformClick()
+
+        'FailMaximumReached()
     End Function
 
     'sets the status of message to sent 
@@ -1166,15 +1250,14 @@ Public Class frmMain
         lblStatus.ForeColor = Color.Green
         lblStatus.Text = "Message Sent"
 
-        btnConnect.Enabled = False
-        btnDisconnect.Enabled = True
+        'btnConnect.Enabled = False
+        'btnDisconnect.Enabled = True
         GetCon.Close()
 
         'invalidate msgid to avoid being used
         msgid = ""
-
+        failcount = 0
     End Function
-
 
     'Counts the number of messages that has the status of  processing-(Sim in use)
     Private Function ProcessCount()
@@ -1269,81 +1352,82 @@ Public Class frmMain
 
             'MessageBox.Show(endtimer)
             If endtimer = True Then
-                lblSeconds.Text = 0
+                lblSeconds.Text = ""
             Else
                 'MessageBox.Show(endtimer)
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblSeconds.Text = 9
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 8
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 7
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 6
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 5
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 4
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 3
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 2
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 1
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                endtimer = endtimer
                 lblSeconds.Text = 0
                 Delay(1)
                 Exit Do
             End If
 
-            If endtimer = True Then
-                'MessageBox.Show("Endtime catch in secs")
+
+            If lblSeconds.Text = 0 Then
                 Exit Do
             End If
         Loop Until endtimer = True
@@ -1354,47 +1438,57 @@ Public Class frmMain
     Private Function tens_count()
         Do
             If endtimer = True Then
-                lblTenSecs.Text = 0
+                lblTenSecs.Text = ""
             Else
-                'MessageBox.Show(endtimer)
-                'MessageBox.Show("tens else executed")
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-
                 lblTenSecs.Text = 5
                 secs_count()
+
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblTenSecs.Text = 4
-
                 secs_count()
+
+                endtimer = endtimer
+                If endtimer = True Then
+                    Exit Do
+                End If
                 lblTenSecs.Text = 3
+                secs_count()
+
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                secs_count()
                 lblTenSecs.Text = 2
+                secs_count()
+
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
-                secs_count()
                 lblTenSecs.Text = 1
-
-                If endtimer = True Then
-                    Exit Do
-                End If
                 secs_count()
-                lblTenSecs.Text = 0
-                    secs_count()
-                    Exit Do
 
-                End If
-
+                endtimer = endtimer
                 If endtimer = True Then
-                'MessageBox.Show("End time Tens")
+                    Exit Do
+                End If
+                lblTenSecs.Text = 0
+                secs_count()
+                Exit Do
+
+
+                If lblTenSecs.Text = 0 Then
+                    Exit Do
+                End If
             End If
+
 
         Loop Until endtimer = True
         Return lblTenSecs.Text
@@ -1405,48 +1499,58 @@ Public Class frmMain
         Do
             'MessageBox.Show(endtimer)
             If endtimer = True Then
-                lblMin.Text = 0
+                lblMin.Text = ""
 
             Else
-                'MessageBox.Show("Mins else executed")
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblMin.Text = 5
                 Delay(1)
 
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblMin.Text = 4
                 tens_count()
+
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblMin.Text = 3
                 tens_count()
+
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblMin.Text = 2
                 tens_count()
+
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblMin.Text = 1
                 tens_count()
+
+                endtimer = endtimer
                 If endtimer = True Then
                     Exit Do
                 End If
                 lblMin.Text = 0
                 tens_count()
                 Exit Do
-            End If
-            If endtimer = True Then
-                'MessageBox.Show("Endtime catch in mins")
+
+                If lblMin.Text = 0 Then
+                    Exit Do
+                End If
             End If
         Loop Until endtimer = True
         Return lblMin.Text
-
+        
     End Function
 End Class
